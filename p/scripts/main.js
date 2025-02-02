@@ -85,8 +85,7 @@ function numberFormat(nStr) {
 		return 0;
 	}
 	// http://www.mredkj.com/javascript/numberFormat.html
-	nStr += '';
-	const x = nStr.split('.');
+	const x = String(nStr).split('.');
 	const x2 = x.length > 1 ? '.' + x[1] : '';
 	const rgx = /(\d+)(\d{3})/;
 	let x1 = x[0];
@@ -279,7 +278,7 @@ function send_mark_read_queue(queue, asRead, callback) {
 			callback();
 		}
 	};
-	req.setRequestHeader('Content-Type', 'application/json');
+	req.setRequestHeader('Content-Type', 'application/json; charset=utf-8');
 	req.send(JSON.stringify({
 		ajax: true,
 		_csrf: context.csrf,
@@ -392,7 +391,7 @@ function mark_favorite(div) {
 
 		delete pending_entries[div.id];
 	};
-	req.setRequestHeader('Content-Type', 'application/json');
+	req.setRequestHeader('Content-Type', 'application/json; charset=utf-8');
 	req.send(JSON.stringify({
 		ajax: true,
 		_csrf: context.csrf,
@@ -544,7 +543,8 @@ function prev_feed() {
 			continue;
 		}
 		if (feed.dataset.unread != 0) {
-			return delayedClick(feed.querySelector('a.item-title'));
+			delayedClick(feed.querySelector('a.item-title'));
+			return;
 		} else if (adjacent === null) {
 			adjacent = feed;
 		}
@@ -573,7 +573,8 @@ function next_feed() {
 			continue;
 		}
 		if (feed.dataset.unread != 0) {
-			return delayedClick(feed.querySelector('a.item-title'));
+			delayedClick(feed.querySelector('a.item-title'));
+			return;
 		} else if (adjacent === null) {
 			adjacent = feed;
 		}
@@ -604,7 +605,7 @@ function prev_category() {
 		do cat = cat.previousElementSibling;
 		while (cat && getComputedStyle(cat).display === 'none');
 		if (cat) {
-			delayedClick(cat.querySelector('a.title'));
+			delayedClick(cat.querySelector('a.tree-folder-title'));
 		}
 	} else {
 		last_category();
@@ -618,7 +619,7 @@ function next_category() {
 		do cat = cat.nextElementSibling;
 		while (cat && getComputedStyle(cat).display === 'none');
 		if (cat) {
-			delayedClick(cat.querySelector('a.title'));
+			delayedClick(cat.querySelector('a.tree-folder-title'));
 		}
 	} else {
 		first_category();
@@ -632,7 +633,7 @@ function next_unread_category() {
 		do cat = cat.nextElementSibling;
 		while (cat && cat.getAttribute('data-unread') <= 0);
 		if (cat) {
-			delayedClick(cat.querySelector('a.title'));
+			delayedClick(cat.querySelector('a.tree-folder-title'));
 		}
 	} else {
 		first_category();
@@ -640,12 +641,12 @@ function next_unread_category() {
 }
 
 function first_category() {
-	const a = document.querySelector('#aside_feed .category:not([data-unread="0"]) a.title');
+	const a = document.querySelector('#aside_feed .category:not([data-unread="0"]) a.tree-folder-title');
 	delayedClick(a);
 }
 
 function last_category() {
-	const links = document.querySelectorAll('#aside_feed .category:not([data-unread="0"]) a.title');
+	const links = document.querySelectorAll('#aside_feed .category:not([data-unread="0"]) a.tree-folder-title');
 	if (links && links.length > 0) {
 		delayedClick(links[links.length - 1]);
 	}
@@ -696,6 +697,56 @@ function user_filter(key) {
 	}
 }
 
+function show_labels_menu(el) {
+	const div = el.parentElement;
+	const dropdownMenu = div.querySelector('.dropdown-menu');
+
+	if (!dropdownMenu || forceReloadLabelsList) {
+		if (dropdownMenu) {
+			dropdownMenu.nextElementSibling.remove();
+			dropdownMenu.remove();
+		}
+
+		const templateId = 'labels_article_template';
+		const template = document.getElementById(templateId).innerHTML;
+		div.insertAdjacentHTML('beforeend', template);
+
+		loadDynamicTags(div.closest('.dynamictags'));
+	}
+	return true;
+}
+
+function show_share_menu(el) {
+	const div = el.parentElement;
+	const dropdownMenu = div.querySelector('.dropdown-menu');
+
+	if (!dropdownMenu) {
+		const itemId = el.closest('.flux').dataset.entry;
+		const templateId = 'share_article_template';
+		const id = itemId;
+		const flux_header_el = el.closest('.flux');
+		const title_el = flux_header_el.querySelector('.item.titleAuthorSummaryDate .item-element.title');
+		const websiteName = ' - ' + flux_header_el.querySelector('.flux_header').dataset.websiteName;
+		const articleAuthors = flux_header_el.querySelector('.flux_header').dataset.articleAuthors;
+		let articleAuthorsText = '';
+		if (articleAuthors.trim().length > 0) {
+			articleAuthorsText = ' (' + articleAuthors + ')';
+		}
+		const link = title_el.href;
+		const title = title_el.textContent;
+		const titleText = title;
+		const template = document.getElementById(templateId).innerHTML
+			.replace(/--entryId--/g, id)
+			.replace(/--link--/g, link)
+			.replace(/--titleText--/g, titleText)
+			.replace(/--websiteName--/g, websiteName)
+			.replace(/--articleAuthors--/g, articleAuthorsText);
+
+		div.insertAdjacentHTML('beforeend', template);
+	}
+	return true;
+}
+
 function auto_share(key) {
 	const share = document.querySelector('.flux.current.active .dropdown-target[id^="dropdown-share"]');
 	if (!share) {
@@ -703,12 +754,18 @@ function auto_share(key) {
 	}
 	const shares = share.parentElement.querySelectorAll('.dropdown-menu .item [data-type]');
 	if (typeof key === 'undefined') {
+		show_share_menu(share);
+
 		// Display the share div
 		location.hash = share.id;
 		// Force scrolling to the share div
-		const scrollTop = needsScroll(share.closest('.bottom'));
+		const scrollTop = needsScroll(share.closest('.horizontal-list'));
 		if (scrollTop !== 0) {
-			document.scrollingElement.scrollTop = scrollTop;
+			if (share.closest('.horizontal-list.flux_header')) {
+				share.nextElementSibling.nextElementSibling.scrollIntoView({ behavior: "smooth", block: "start" });
+			} else {
+				share.nextElementSibling.nextElementSibling.scrollIntoView({ behavior: "smooth", block: "end" });
+			}
 		}
 		// Force the key value if there is only one action, so we can trigger it automatically
 		if (shares.length === 1) {
@@ -874,17 +931,18 @@ function init_column_categories() {
 
 		a = ev.target.closest('.tree-folder-items > .feed .dropdown-toggle');
 		if (a) {
-			loadJs('extra.js');
-			loadJs('feed.js');
-			const itemId = a.closest('.item').id;
-			const templateId = itemId.substring(0, 2) === 't_' ? 'tag_config_template' : 'feed_config_template';
-			const id = itemId.substr(2);
-			const feed_web = a.getAttribute('data-fweb') || '';
 			const div = a.parentElement;
 			const dropdownMenu = div.querySelector('.dropdown-menu');
-			const template = document.getElementById(templateId)
-				.innerHTML.replace(/------/g, id).replace('http://example.net/', feed_web);
+
 			if (!dropdownMenu) {
+				loadJs('extra.js');
+				loadJs('feed.js');
+				const itemId = a.closest('.item').id;
+				const templateId = itemId.substring(0, 2) === 't_' ? 'tag_config_template' : 'feed_config_template';
+				const id = itemId.substr(2);
+				const feed_web = a.getAttribute('data-fweb') || '';
+				const template = document.getElementById(templateId)
+					.innerHTML.replace(/------/g, id).replace('http://example.net/', feed_web);
 				div.insertAdjacentHTML('beforeend', template);
 				if (feed_web == '') {
 					const website = div.querySelector('.item.link.website');
@@ -896,11 +954,6 @@ function init_column_categories() {
 				if (b) {
 					b.disabled = false;
 				}
-			} else if (getComputedStyle(dropdownMenu).display === 'none') {
-				const id2 = div.closest('.item').id.substr(2);
-				a.href = '#dropdown-' + id2;
-			} else {
-				a.href = '#close';
 			}
 			return true;
 		}
@@ -912,11 +965,15 @@ function init_column_categories() {
 function init_shortcuts() {
 	Object.keys(context.shortcuts).forEach(function (k) {
 		context.shortcuts[k] = (context.shortcuts[k] || '').toUpperCase();
+		if (context.shortcuts[k].indexOf('&') >= 0) {
+			// Decode potential HTML entities <'&">
+			const parser = new DOMParser();
+			context.shortcuts[k] = parser.parseFromString(context.shortcuts[k], 'text/html').documentElement.textContent;
+		}
 	});
 
 	document.addEventListener('keydown', ev => {
-		if (ev.target.closest('input, textarea') ||
-				ev.ctrlKey || ev.metaKey || (ev.altKey && ev.shiftKey)) {
+		if (ev.ctrlKey || ev.metaKey || (ev.altKey && ev.shiftKey) || ev.target.closest('input, select, textarea')) {
 			return;
 		}
 
@@ -1022,6 +1079,10 @@ function init_shortcuts() {
 			ev.preventDefault();
 			return;
 		}
+		if (ev.key === '?') {
+			window.location.href = context.urls.shortcuts.replace(/&amp;/g, '&');
+			return;
+		}
 
 		if (ev.altKey || ev.shiftKey) {
 			return;
@@ -1038,12 +1099,8 @@ function init_shortcuts() {
 
 			const link_go_website = document.querySelector('.flux.current a.go_website');
 			if (link_go_website) {
-				const newWindow = window.open();
-				if (newWindow) {
-					newWindow.opener = null;
-					newWindow.location = link_go_website.href;
-					ev.preventDefault();
-				}
+				window.open(link_go_website.href, '_blank', 'noopener');
+				ev.preventDefault();
 			}
 			return;
 		}
@@ -1077,12 +1134,6 @@ function init_stream(stream) {
 			return false;
 		}
 
-		el = ev.target.closest('.dynamictags');
-		if (el) {
-			loadDynamicTags(el);
-			return true;
-		}
-
 		el = ev.target.closest('.item a.title');
 		if (el) {	// Allow default control/command-click behaviour such as open in background-tab
 			return ev.ctrlKey || ev.metaKey;
@@ -1095,6 +1146,16 @@ function init_stream(stream) {
 				el.rel = 'noreferrer';
 			}
 			return true;
+		}
+
+		el = ev.target.closest('.item.labels a.dropdown-toggle');
+		if (el) {
+			return show_labels_menu(el);
+		}
+
+		el = ev.target.closest('.item.share a.dropdown-toggle');
+		if (el) {
+			return show_share_menu(el);
 		}
 
 		el = ev.target.closest('.item.share > button[data-type="print"]');
@@ -1262,10 +1323,28 @@ function init_stream(stream) {
 				req.onloadend = function (e) {
 					checkboxTag.disabled = false;
 					if (tagId == 0) {
+						// new tag is added
+						forceReloadLabelsList = true;
 						loadDynamicTags(checkboxTag.closest('div.dropdown'));
+					} else {
+						// a tag was (un)checked
+						const dropdownmenu_current = ev.target.closest('.dropdown-menu');
+						const flux = ev.target.closest('.flux');
+						const dropdownmenu_all = flux.querySelectorAll('.dynamictags .dropdown-menu');
+						if (dropdownmenu_all.length > 1) {
+							// delete all other tag dropdown menus except the current one
+							dropdownmenu_all.forEach(
+								function (currentValue) {
+									if (currentValue !== dropdownmenu_current) {
+										currentValue.nextElementSibling.remove();
+										currentValue.parentNode.removeChild(currentValue);
+									}
+								}
+							);
+						}
 					}
 				};
-				req.setRequestHeader('Content-Type', 'application/json');
+				req.setRequestHeader('Content-Type', 'application/json; charset=utf-8');
 				req.send(JSON.stringify({
 					_csrf: context.csrf,
 					id_tag: tagId,
@@ -1313,8 +1392,12 @@ function init_nav_entries() {
 	}
 }
 
+// forceReloadLabelsList default is false, so that the list does need a reload after opening it a second time.
+// will be set to true, if a new tag is added. Then the labels list will be reloaded each opening.
+// purpose of this flag: minimize the network traffic.
+let forceReloadLabelsList = false;
+
 function loadDynamicTags(div) {
-	div.classList.remove('dynamictags');
 	div.querySelectorAll('li.item').forEach(function (li) { li.remove(); });
 	const entryId = div.closest('div.flux').id.replace(/^flux_/, '');
 
@@ -1323,7 +1406,6 @@ function loadDynamicTags(div) {
 	req.responseType = 'json';
 	req.onerror = function (e) {
 		div.querySelectorAll('li.item').forEach(function (li) { li.remove(); });
-		div.classList.add('dynamictags');
 	};
 	req.onload = function (e) {
 		if (this.status != 200) {
@@ -1349,6 +1431,7 @@ function loadDynamicTags(div) {
 			const input_newTag = document.createElement('input');
 			input_newTag.setAttribute('type', 'text');
 			input_newTag.setAttribute('name', 'newTag');
+			input_newTag.setAttribute('list', 'datalist-labels');
 			input_newTag.addEventListener('keydown', function (ev) { if (ev.key.toUpperCase() == 'ENTER') { this.parentNode.previousSibling.click(); } });
 
 			const button_btn = document.createElement('button');
@@ -1368,10 +1451,11 @@ function loadDynamicTags(div) {
 			label.appendChild(div_stick);
 			li_item0.appendChild(label);
 
-			div.querySelector('.dropdown-menu').appendChild(li_item0);
+			div.querySelector('.dropdown-menu-scrollable').appendChild(li_item0);
 		}
 
 		let html = '';
+		let datalist = '';
 		if (json && json.length) {
 			let nbLabelsChecked = 0;
 			for (let i = 0; i < json.length; i++) {
@@ -1387,13 +1471,17 @@ function loadDynamicTags(div) {
 					(context.anonymous ? '' : 'class="checkboxTag" ') +
 					'name="t_' + tag.id + '"type="checkbox" ' +
 					(context.anonymous ? 'disabled="disabled" ' : '') +
-					(tag.checked ? 'checked="checked" ' : '') + '/> ' + tag.name + '</label></li>';
+					(tag.checked ? 'checked="checked" ' : '') + '/>' + tag.name + '</label></li>';
+				datalist += '<option value="' + tag.name + '"></option>';
 			}
 			if (context.anonymous && nbLabelsChecked === 0) {
 				html += '<li class="item"><span class="emptyLabels">' + context.i18n.labels_empty + '</span></li>';
 			}
 		}
-		div.querySelector('.dropdown-menu').insertAdjacentHTML('beforeend', html);
+		div.querySelector('.dropdown-menu-scrollable').insertAdjacentHTML('beforeend', html);
+		const datalistLabels = document.getElementById('datalist-labels');
+		datalistLabels.innerHTML = ''; // clear before add the (updated) labels list
+		datalistLabels.insertAdjacentHTML('beforeend', datalist);
 	};
 	req.send();
 }
@@ -1426,7 +1514,7 @@ function refreshFeed(feeds, feeds_count) {
 			req2.onloadend = function (e) {
 				delayedFunction(function () { location.reload(); });
 			};
-			req2.setRequestHeader('Content-Type', 'application/json');
+			req2.setRequestHeader('Content-Type', 'application/json; charset=utf-8');
 			req2.send(JSON.stringify({
 				_csrf: context.csrf,
 				noCommit: 0,
@@ -1435,7 +1523,7 @@ function refreshFeed(feeds, feeds_count) {
 			refreshFeed(feeds, feeds_count);
 		}
 	};
-	req.setRequestHeader('Content-Type', 'application/json');
+	req.setRequestHeader('Content-Type', 'application/json; charset=utf-8');
 	req.send(JSON.stringify({
 		_csrf: context.csrf,
 		noCommit: 1,
@@ -1451,7 +1539,7 @@ function refreshFeeds(json) {
 		req2.onloadend = function (e) {
 			context.ajax_loading = false;
 		};
-		req2.setRequestHeader('Content-Type', 'application/json');
+		req2.setRequestHeader('Content-Type', 'application/json; charset=utf-8');
 		req2.send(JSON.stringify({
 			_csrf: context.csrf,
 			noCommit: 0,
@@ -1486,7 +1574,7 @@ function refreshDynamicOpml(categories, categories_count, next) {
 			refreshDynamicOpml(categories, categories_count, next);
 		}
 	};
-	req.setRequestHeader('Content-Type', 'application/json');
+	req.setRequestHeader('Content-Type', 'application/json; charset=utf-8');
 	req.send(JSON.stringify({
 		_csrf: context.csrf,
 		noCommit: 1,
@@ -1557,7 +1645,7 @@ function init_actualize() {
 				refreshFeeds(json);
 			}
 		};
-		req.setRequestHeader('Content-Type', 'application/json');
+		req.setRequestHeader('Content-Type', 'application/json; charset=utf-8');
 		req.send(JSON.stringify({
 			_csrf: context.csrf,
 		}));
@@ -1602,7 +1690,7 @@ function closeNotification() {
 function init_notifications() {
 	notification = document.getElementById('notification');
 
-	notification.querySelector('a.close').addEventListener('click', function (ev) {
+	notification.querySelector('.close').addEventListener('click', function (ev) {
 		closeNotification();
 		ev.preventDefault();
 		return false;
@@ -1707,7 +1795,7 @@ function refreshUnreads() {
 			if ((incUnreadsFeed(null, feed_id, nbUnreads - feed_unreads) || isAll) &&	// Update of current view?
 					(nbUnreads - feed_unreads > 0)) {
 				const newArticle = document.getElementById('new-article');
-				newArticle.setAttribute('aria-hidden', 'false');
+				newArticle.removeAttribute('hidden');
 				newArticle.style.display = 'block';
 				new_articles = true;
 			}
@@ -1769,6 +1857,12 @@ let url_load_more = '';
 let load_more = false;
 let box_load_more = null;
 
+function remove_existing_posts() {
+	document.querySelectorAll('.flux, .day').forEach(function (div) {
+		div.remove();
+	});
+}
+
 function load_more_posts() {
 	if (load_more || !url_load_more || !box_load_more) {
 		return;
@@ -1780,6 +1874,11 @@ function load_more_posts() {
 	req.open('GET', url_load_more, true);
 	req.responseType = 'document';
 	req.onload = function (e) {
+		if (context.sort === 'rand') {
+			document.scrollingElement.scrollTop = 0;
+			remove_existing_posts();
+		}
+
 		const html = this.response;
 		const streamFooter = document.getElementById('stream-footer');
 
@@ -1936,6 +2035,7 @@ function init_normal() {
 }
 
 function init_main_beforeDOM() {
+	history.scrollRestoration = 'manual';
 	document.scrollingElement.scrollTop = 0;
 	init_shortcuts();
 	if (['normal', 'reader', 'global'].indexOf(context.current_view) >= 0) {
